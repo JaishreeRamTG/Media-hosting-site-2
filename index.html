@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Player with Upload</title>
+    <title>Video Player with Upload and Custom Name</title>
     <link href="https://vjs.zencdn.net/7.21.0/video-js.css" rel="stylesheet">
     <style>
         body {
@@ -74,10 +74,26 @@
         fileInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
+                // Ask the user if they want to keep the original name or use a custom one
+                const useCustomName = confirm("Do you want to provide a custom name for this video?");
+                let videoName;
+
+                if (useCustomName) {
+                    videoName = prompt("Enter a custom name for the video (without extension):");
+                    if (!videoName) {
+                        alert("Custom name not provided. Using the original filename.");
+                        videoName = file.name.split('.').slice(0, -1).join('.');
+                    }
+                } else {
+                    videoName = file.name.split('.').slice(0, -1).join('.');
+                }
+
                 const videoURL = URL.createObjectURL(file);
                 videoSource.src = videoURL;
                 videoPlayer.load();
                 videoPlayer.play();
+
+                alert(`The video "${videoName}.mp4" is now playing.`);
             } else {
                 alert("No file selected!");
             }
