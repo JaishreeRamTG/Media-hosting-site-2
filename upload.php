@@ -1,66 +1,83 @@
 <?php
+header('Content-Type: application/json');
 
-// Directory where files will be stored
-$uploadDirectory = "uploads/";
-
-// Create the directory if it doesn't exist
-if (!is_dir($uploadDirectory)) {
-    mkdir($uploadDirectory, 0777, true);
+// Set the upload directory
+$uploadDir = 'uploads/';
+if (!is_dir($uploadDir)) {
+    mkdir($uploadDir, 0777, true); // Create the upload directory if it doesn't exist
 }
 
-// Initialize response
-$response = ['success' => false, 'files' => []];
+// Path to store expiration metadata
+$dataFile = 'data.json';
+if (!file_exists($dataFile)) {
+    file_put_contents($dataFile, json_encode([])); // Initialize if not exists
+}
 
-// Check if files are uploaded
-if (isset($_FILES['files'])) {
-    $files = $_FILES['files'];
-    $uploadedFiles = [];
+// Function to generate a random unique name
+function generateRandomName($length = 10) {
+    return substr(str_shuffle('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'), 0, $length);
+}
 
-    // Loop through each uploaded file
-    for ($i = 0; $i < count($files['name']); $i++) {
-        $fileName = basename($files['name'][$i]);
-        $fileTmpName = $files['tmp_name'][$i];
-        $filePath = $uploadDirectory . $fileName;
+// Check if the file is uploaded
+if (isset($_FILES['image'])) {
+    $image = $_FILES['image'];
+    $customName = isset($_POST['imageURL']) ? basename($_POST['imageURL']) : '';
+    $expiration = $_POST['expiration'];
 
-        // Check for upload errors
-        if ($files['error'][$i] !== UPLOAD_ERR_OK) {
-            $response['error'] = "Error uploading file: " . $files['name'][$i] . ". Code: " . $files['error'][$i];
-            echo json_encode($response);
+    // Generate a file extension
+    $fileExtension = pathinfo($image['name'], PATHINFO_EXTENSION);
+
+    // Determine the image name
+    if (!empty($customName)) {
+        // Check if the custom name already exists
+        $targetFile = $uploadDir . $customName . '.' . $fileExtension;
+        if (file_exists($targetFile)) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'The custom name is already in use. Please choose another name.'
+            ]);
             exit;
-        }
-
-        // Check if the file is an image or video (optional)
-        $fileType = mime_content_type($fileTmpName);
-        if (in_array($fileType, ['image/jpeg', 'image/png', 'video/mp4', 'video/avi', 'video/mkv'])) {
-            // Move the uploaded file to the target directory
-            if (move_uploaded_file($fileTmpName, $filePath)) {
-                $uploadedFiles[] = $fileName;
-            } else {
-                $response['error'] = "Failed to move file: " . $files['name'][$i];
-                echo json_encode($response);
-                exit;
-            }
-        } else {
-            $response['error'] = "Invalid file type: " . $files['name'][$i];
-            echo json_encode($response);
-            exit;
-        }
-    }
-
-    // If files were uploaded successfully, send back the success response
-    if (count($uploadedFiles) > 0) {
-        $response['success'] = true;
-        // Construct URLs with 'uploads/' prefix
-        foreach ($uploadedFiles as $file) {
-            $response['files'][] = $_SERVER['HTTP_HOST'] . '/' . $uploadDirectory . $file;
         }
     } else {
-        $response['error'] = "No files were uploaded.";
+        // Generate a random name if no custom name is provided
+        do {
+            $randomName = generateRandomName();
+            $targetFile = $uploadDir . $randomName . '.' . $fileExtension;
+        } while (file_exists($targetFile)); // Ensure the name is unique
+        $customName = $randomName;
+    }
+
+    // Move the uploaded file to the target directory
+    if (move_uploaded_file($image['tmp_name'], $targetFile)) {
+        $imageURL = 'http://' . $_SERVER['HTTP_HOST'] . '/' . $targetFile;
+
+        // Calculate expiration timestamp
+        $expirationTimestamp = $expiration === 'no-limit' ? null : time() + ($expiration * 60);
+
+        // Save metadata to data.json
+        $data = json_decode(file_get_contents($dataFile), true);
+        $data[] = [
+            'filePath' => $targetFile,
+            'expiration' => $expirationTimestamp
+        ];
+        file_put_contents($dataFile, json_encode($data));
+
+        // Return a JSON response
+        echo json_encode([
+            'success' => true,
+            'imageURL' => $imageURL,
+            'imageName' => $customName,
+            'expirationTime' => $expiration === 'no-limit' ? 'No limit' : $expiration . ' minutes'
+        ]);
+    } else {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Failed to upload image.'
+        ]);
     }
 } else {
-    $response['error'] = "No files received.";
+    echo json_encode([
+        'success' => false,
+        'message' => 'No image file was uploaded.'
+    ]);
 }
-
-// Return response as JSON
-echo json_encode($response);
-?>
